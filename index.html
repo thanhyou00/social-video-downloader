@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>VidDown — Tải video mạng xã hội</title>
+<meta name="description" content="Tải video từ TikTok, Douyin, YouTube, Instagram, Facebook miễn phí, không watermark." />
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+<header class="site-header">
+  <div class="container">
+    <div class="logo">
+      <svg width="28" height="28" viewBox="0 0 28 28" fill="none" aria-hidden="true">
+        <rect width="28" height="28" rx="8" fill="#6C63FF"/>
+        <path d="M14 7v10M14 17l-4-4M14 17l4-4" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        <path d="M8 21h12" stroke="#fff" stroke-width="2" stroke-linecap="round"/>
+      </svg>
+      <span>VidDown</span>
+    </div>
+    <nav class="nav-pills">
+      <a href="#howto">Hướng dẫn</a>
+      <a href="#platforms">Nền tảng</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+  <!-- Hero -->
+  <section class="hero">
+    <div class="container hero-inner">
+      <h1>Tải video<br><span class="accent">không watermark</span></h1>
+      <p class="subtitle">Hỗ trợ Douyin, TikTok, YouTube, Instagram, Facebook và 20+ nền tảng khác — miễn phí, không cài app.</p>
+
+      <div class="search-card" id="searchCard">
+        <div class="input-row">
+          <div class="input-wrap">
+            <svg class="input-icon" width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true">
+              <path d="M3 9a6 6 0 1 0 12 0A6 6 0 0 0 3 9zM15 15l-2.5-2.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+            </svg>
+            <input type="text" id="urlInput" placeholder="Dán link video vào đây..." autocomplete="off" spellcheck="false" />
+            <button class="clear-btn" id="clearBtn" onclick="clearInput()" aria-label="Xóa">✕</button>
+          </div>
+          <button class="btn-primary" id="fetchBtn" onclick="handleFetch()">Phân tích</button>
+        </div>
+        <div class="input-hint">Hỗ trợ: douyin.com · tiktok.com · youtube.com · instagram.com · facebook.com · twitter.com · pinterest · vimeo · và nhiều hơn</div>
+      </div>
+
+      <!-- Error -->
+      <div class="alert alert-error" id="errorBox" hidden></div>
+
+      <!-- Loading -->
+      <div class="loading-box" id="loadingBox" hidden>
+        <div class="spinner"></div>
+        <span>Đang phân tích link...</span>
+      </div>
+
+      <!-- Result -->
+      <div class="result-card" id="resultCard" hidden>
+        <div class="result-header">
+          <div class="result-thumb" id="resultThumb">
+            <svg width="32" height="32" viewBox="0 0 32 32" fill="none" aria-hidden="true"><circle cx="16" cy="16" r="16" fill="#ede9fe"/><path d="M13 11l9 5-9 5V11z" fill="#6C63FF"/></svg>
+          </div>
+          <div class="result-meta">
+            <div class="result-title" id="resultTitle">–</div>
+            <div class="result-sub">
+              <span class="tag" id="resultPlatform">–</span>
+              <span id="resultAuthor"></span>
+              <span id="resultDuration"></span>
+            </div>
+          </div>
+        </div>
+
+        <div class="formats-section">
+          <div class="formats-label">Chọn định dạng</div>
+          <div class="format-grid" id="formatGrid"></div>
+        </div>
+
+        <div class="result-footer">
+          <span class="selected-hint" id="selectedHint">Chưa chọn định dạng</span>
+          <button class="btn-download" id="dlBtn" onclick="handleDownload()" disabled>
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M8 2v8M8 10L5 7M8 10l3-3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><path d="M3 14h10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+            Tải xuống
+          </button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Platforms -->
+  <section class="platforms" id="platforms">
+    <div class="container">
+      <h2 class="section-title">Nền tảng hỗ trợ</h2>
+      <div class="plat-grid">
+        <div class="plat-card featured">
+          <div class="plat-icon" style="background:#010101;color:#fff;">抖</div>
+          <div class="plat-name">Douyin</div>
+          <div class="plat-note">Không watermark</div>
+        </div>
+        <div class="plat-card featured">
+          <div class="plat-icon" style="background:#010101;color:#fff;">TT</div>
+          <div class="plat-name">TikTok</div>
+          <div class="plat-note">Không watermark</div>
+        </div>
+        <div class="plat-card">
+          <div class="plat-icon" style="background:#FF0000;color:#fff;">▶</div>
+          <div class="plat-name">YouTube</div>
+          <div class="plat-note">Video + Audio</div>
+        </div>
+        <div class="plat-card">
+          <div class="plat-icon" style="background:#E1306C;color:#fff;">IG</div>
+          <div class="plat-name">Instagram</div>
+          <div class="plat-note">Reels, Story</div>
+        </div>
+        <div class="plat-card">
+          <div class="plat-icon" style="background:#1877F2;color:#fff;">f</div>
+          <div class="plat-name">Facebook</div>
+          <div class="plat-note">Video, Reels</div>
+        </div>
+        <div class="plat-card">
+          <div class="plat-icon" style="background:#1DA1F2;color:#fff;">𝕏</div>
+          <div class="plat-name">Twitter/X</div>
+          <div class="plat-note">Video, GIF</div>
+        </div>
+        <div class="plat-card">
+          <div class="plat-icon" style="background:#E60023;color:#fff;">P</div>
+          <div class="plat-name">Pinterest</div>
+          <div class="plat-note">Video, GIF</div>
+        </div>
+        <div class="plat-card">
+          <div class="plat-icon" style="background:#1AB7EA;color:#fff;">V</div>
+          <div class="plat-name">Vimeo</div>
+          <div class="plat-note">HD Video</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- How to -->
+  <section class="howto" id="howto">
+    <div class="container">
+      <h2 class="section-title">Cách sử dụng</h2>
+      <div class="steps">
+        <div class="step">
+          <div class="step-num">1</div>
+          <div class="step-body">
+            <div class="step-title">Sao chép link</div>
+            <div class="step-desc">Mở app hoặc web, nhấn Chia sẻ và chọn Sao chép liên kết.</div>
+          </div>
+        </div>
+        <div class="step-arrow">→</div>
+        <div class="step">
+          <div class="step-num">2</div>
+          <div class="step-body">
+            <div class="step-title">Dán vào đây</div>
+            <div class="step-desc">Dán link vào ô tìm kiếm phía trên và nhấn Phân tích.</div>
+          </div>
+        </div>
+        <div class="step-arrow">→</div>
+        <div class="step">
+          <div class="step-num">3</div>
+          <div class="step-body">
+            <div class="step-title">Tải xuống</div>
+            <div class="step-desc">Chọn chất lượng mong muốn và nhấn Tải xuống.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer class="site-footer">
+  <div class="container">
+    <span>© 2025 VidDown · Chỉ dùng cho mục đích cá nhân · Không lưu trữ video</span>
+    <span>Powered by <a href="https://cobalt.tools" target="_blank" rel="noopener">cobalt.tools</a></span>
+  </div>
+</footer>
+
+<script src="app.js"></script>
+</body>
+</html>
