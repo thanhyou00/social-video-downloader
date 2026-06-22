@@ -5,30 +5,19 @@
  * Đăng ký key tại: https://rapidapi.com/ugoBoy/api/social-media-video-downloader
  */
 
-// ── Cấu hình — CHỈ CẦN ĐỔI DÒNG NÀY ────────────────
+// ── Cấu hình ─────────────────────────────────────────
 const RAPIDAPI_KEY = "86e2214a67msh7b7095460860fbcp1409e0jsn6b6d478579ba";
 
-// Endpoints theo thứ tự ưu tiên (fallback nếu 1 cái lỗi)
 const APIS = [
   {
-    name: "Social Media Downloader",
-    url: "https://social-media-video-downloader.p.rapidapi.com/smvd/get/all",
-    host: "social-media-video-downloader.p.rapidapi.com",
+    name: "Auto Download All-in-One",
+    url: "https://auto-download-all-in-one-big.p.rapidapi.com/v1/social/autolink",
+    host: "auto-download-all-in-one-big.p.rapidapi.com",
     buildRequest: (videoUrl) => ({
-      method: "GET",
-      params: new URLSearchParams({ url: videoUrl }),
+      method: "POST",
+      body: { url: videoUrl },
     }),
-    parseResponse: parseSMVD,
-  },
-  {
-    name: "All Social Downloader",
-    url: "https://all-social-media-downloader.p.rapidapi.com/alldownloader",
-    host: "all-social-media-downloader.p.rapidapi.com",
-    buildRequest: (videoUrl) => ({
-      method: "GET",
-      params: new URLSearchParams({ url: videoUrl }),
-    }),
-    parseResponse: parseGeneric,
+    parseResponse: parseAutoDownload,
   },
 ];
 
@@ -140,66 +129,37 @@ function detectPlatform(url) {
   return "Video";
 }
 
-// ── Parse response từ Social Media Video Downloader ──
-function parseSMVD(data, originalUrl) {
-  // Response: { success, title, thumbnail, links: [{link, quality, type}] }
+// ── Parse response Auto Download All-in-One ──────────
+// Response: { success, title, thumbnail, medias: [{url, quality, extension, formattedSize}] }
+function parseAutoDownload(data, originalUrl) {
   if (!data.success) throw new Error(data.message || "Không tải được video này.");
 
+  const base = sanitizeFilename(data.title || detectPlatform(originalUrl));
   const formats = [];
-  for (const item of (data.links || [])) {
-    const isAudio = item.type === "audio" || item.quality?.toLowerCase().includes("audio") || item.quality?.toLowerCase().includes("mp3");
+
+  for (const item of (data.medias || [])) {
+    if (!item.url) continue;
+    const ext = (item.extension || "mp4").toLowerCase();
+    const isAudio = ext === "mp3" || ext === "m4a" || ext === "ogg" ||
+                    (item.quality || "").toLowerCase().includes("audio");
+    const quality = item.quality || (isAudio ? "Audio" : "Video");
     formats.push({
-      label: isAudio ? "Audio" : (item.quality || "Video"),
-      desc: isAudio ? "Chỉ âm thanh (MP3)" : ("Video " + (item.quality || "")),
+      label: isAudio ? "MP3" : quality,
+      desc: isAudio ? "Chỉ âm thanh (MP3)" : `Video ${quality}`,
+      size: item.formattedSize || "–",
       type: isAudio ? "audio" : "video",
-      url: item.link,
-      filename: sanitizeFilename(data.title || detectPlatform(originalUrl)) + (isAudio ? ".mp3" : ".mp4"),
+      url: item.url,
+      filename: base + "." + ext,
     });
   }
+
+  if (!formats.length) throw new Error("Không tìm thấy link tải trong kết quả.");
 
   return {
     title: data.title || "Video",
     thumbnail: data.thumbnail || null,
     formats,
   };
-}
-
-// ── Parse response generic ────────────────────────────
-function parseGeneric(data, originalUrl) {
-  const platform = detectPlatform(originalUrl);
-  const formats = [];
-
-  // Thử nhiều cấu trúc response phổ biến
-  const links = data.links || data.medias || data.data?.medias || data.data?.links || [];
-  for (const item of links) {
-    const url = item.url || item.link || item.downloadUrl;
-    const quality = item.quality || item.resolution || item.format || "Video";
-    if (!url) continue;
-    const isAudio = quality.toLowerCase().includes("audio") || quality.toLowerCase().includes("mp3");
-    formats.push({
-      label: isAudio ? "Audio" : quality,
-      desc: isAudio ? "Chỉ âm thanh" : "Video " + quality,
-      type: isAudio ? "audio" : "video",
-      url,
-      filename: sanitizeFilename(data.title || platform) + (isAudio ? ".mp3" : ".mp4"),
-    });
-  }
-
-  // Fallback: link trực tiếp
-  if (!formats.length) {
-    const directUrl = data.url || data.download_url || data.videoUrl;
-    if (directUrl) {
-      formats.push({
-        label: "MP4", desc: "Video", type: "video",
-        url: directUrl,
-        filename: sanitizeFilename(data.title || platform) + ".mp4",
-      });
-    }
-  }
-
-  if (!formats.length) throw new Error("Không phân tích được link tải.");
-
-  return { title: data.title || "Video", thumbnail: data.thumbnail || null, formats };
 }
 
 function sanitizeFilename(name) {
@@ -229,12 +189,15 @@ async function callApi(api, videoUrl) {
       "Content-Type": "application/json",
     },
     body: req.body ? JSON.stringify(req.body) : undefined,
-    signal: AbortSignal.timeout(15000),
+    signal: AbortSignal.timeout(20000),
   });
 
-  if (res.status === 403) throw new Error("API key không hợp lệ hoặc chưa subscribe API này.");
-  if (res.status === 429) throw new Error("Đã hết quota miễn phí tháng này.");
-  if (!res.ok) throw new Error("Lỗi server: " + res.status);
+  if (res.status === 403) throw new Error("API key không hợp lệ hoặc chưa subscribe API này trên RapidAPI.");
+  if (res.status === 429) throw new Error("Đã hết quota miễn phí tháng này (500 req/tháng).");
+  if (!res.ok) {
+    const txt = await res.text().catch(() => "");
+    throw new Error(`Lỗi server ${res.status}: ${txt.slice(0, 100)}`);
+  }
 
   return await res.json();
 }
@@ -309,7 +272,7 @@ function renderResult(result, url) {
       '<div class="fmt-radio"></div>' +
       '<span class="fmt-badge ' + (fmt.type === "audio" ? "badge-audio" : "badge-video") + '">' + fmt.label + "</span>" +
       '<span class="fmt-desc">' + fmt.desc + "</span>" +
-      '<span class="fmt-size">–</span>';
+      '<span class="fmt-size">' + fmt.size + '</span>';
     item.addEventListener("click", () => selectFormat(item, fmt));
     grid.appendChild(item);
     if (i === 0) item.click();
