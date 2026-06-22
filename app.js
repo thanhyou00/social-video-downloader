@@ -53,38 +53,51 @@ $("urlInput").addEventListener("keydown", (e) => {
   if (e.key === "Enter") handleFetch();
 });
 
-async function copyLink() {
-  const url = $("urlInput").value.trim();
-  if (!url) { $("urlInput").focus(); return; }
-  try {
-    // Thử clipboard API trước
-    if (navigator.clipboard && window.isSecureContext) {
-      await navigator.clipboard.writeText(url);
-    } else {
-      // Fallback cho HTTP hoặc trình duyệt cũ
-      const ta = document.createElement("textarea");
-      ta.value = url;
-      ta.style.cssText = "position:fixed;left:-9999px;top:-9999px";
-      document.body.appendChild(ta);
-      ta.select();
-      document.execCommand("copy");
-      document.body.removeChild(ta);
+async function togglePaste() {
+  const input = $("urlInput");
+
+  if (input.value.trim()) {
+    // Có link → xóa
+    input.value = "";
+    hide($("resultCard"));
+    clearError();
+    updatePasteBtn(false);
+    input.focus();
+  } else {
+    // Chưa có link → paste từ clipboard
+    try {
+      let text = "";
+      if (navigator.clipboard && window.isSecureContext) {
+        text = await navigator.clipboard.readText();
+      }
+      if (text) {
+        const extracted = extractUrl(text) || text.trim();
+        input.value = extracted;
+        updatePasteBtn(true);
+        if (isValidUrl(extracted)) handleFetch();
+      } else {
+        input.focus();
+      }
+    } catch {
+      input.focus();
     }
-    const btn = $("copyBtn");
-    const orig = btn.innerHTML;
-    btn.innerHTML = '<svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M3 8l4 4 6-6" stroke="#16a34a" stroke-width="1.8" stroke-linecap="round"/></svg>';
-    btn.style.color = "#16a34a";
-    setTimeout(() => { btn.innerHTML = orig; btn.style.color = ""; }, 1500);
-  } catch(e) {
-    console.warn("Copy failed:", e);
   }
+}
+
+function updatePasteBtn(hasValue) {
+  const btn = $("pasteBtn");
+  if (!btn) return;
+  $("iconPaste").style.display = hasValue ? "none" : "";
+  $("iconClear").style.display = hasValue ? "" : "none";
+  btn.classList.toggle("is-clear", hasValue);
+  btn.title = hasValue ? "Xóa link" : "Dán link";
 }
 
 function clearInput() {
   $("urlInput").value = "";
-  
   hide($("resultCard"));
   clearError();
+  updatePasteBtn(false);
   $("urlInput").focus();
 }
 
