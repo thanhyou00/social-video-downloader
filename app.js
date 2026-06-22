@@ -4,6 +4,11 @@
  * Fallback: tikwm.com       — TikTok/Douyin không watermark
  */
 
+// ── Cấu hình RapidAPI (fallback cho Douyin) ─────────
+const RAPIDAPI_KEY = "86e2214a67msh7b7095460860fbcp1409e0jsn6b6d478579ba";
+const RAPIDAPI_HOST = "auto-download-all-in-one-big.p.rapidapi.com";
+const RAPIDAPI_URL  = "https://auto-download-all-in-one-big.p.rapidapi.com/v1/social/autolink";
+
 // ── DOM helpers ──────────────────────────────────────
 const $ = (id) => document.getElementById(id);
 function show(el) { el.hidden = false; }
@@ -224,6 +229,55 @@ function formatDuration(secs) {
   return "⏱ " + m + ":" + String(s).padStart(2, "0");
 }
 
+// ── API 3: RapidAPI All-in-One (fallback Douyin) ─────
+async function fetchRapidAPI(url) {
+  const res = await fetch(RAPIDAPI_URL, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-rapidapi-key": RAPIDAPI_KEY,
+      "x-rapidapi-host": RAPIDAPI_HOST,
+    },
+    body: JSON.stringify({ url }),
+    signal: AbortSignal.timeout(20000),
+  });
+
+  if (res.status === 403) throw new Error("RapidAPI: key không hợp lệ.");
+  if (res.status === 429) throw new Error("RapidAPI: hết quota tháng này.");
+  if (!res.ok) throw new Error("RapidAPI lỗi: " + res.status);
+
+  const json = await res.json();
+  if (!json.success && json.message) throw new Error("RapidAPI: " + json.message);
+
+  const base = sanitizeFilename(json.title || "video");
+  const formats = [];
+
+  for (const item of (json.medias || [])) {
+    if (!item.url) continue;
+    const ext = (item.extension || "mp4").toLowerCase();
+    const isAudio = ext === "mp3" || ext === "m4a" || (item.quality || "").toLowerCase().includes("audio");
+    const quality = item.quality || (isAudio ? "Audio" : "Video");
+    formats.push({
+      label: isAudio ? "MP3" : quality,
+      desc: isAudio ? "Chỉ âm thanh (MP3)" : "Video " + quality,
+      size: item.formattedSize || "–",
+      type: isAudio ? "audio" : "video",
+      url: item.url,
+      filename: base + "." + ext,
+    });
+  }
+
+  if (!formats.length) throw new Error("RapidAPI: Không tìm thấy link tải.");
+
+  return {
+    title: json.title || "Video",
+    thumbnail: json.thumbnail || null,
+    author: "",
+    duration: 0,
+    formats,
+  };
+}
+
 // ── Main fetch ───────────────────────────────────────
 async function handleFetch() {
   let url = $("urlInput").value.trim();
@@ -245,23 +299,37 @@ async function handleFetch() {
   $("fetchBtn").disabled = true;
   show($("loadingBox"));
 
+  const isDouyin = url.includes("douyin.com");
   let result = null;
   const errors = [];
 
-  // Thử douyin.wtf trước (hỗ trợ short link tốt hơn)
-  try {
-    result = await fetchDouyinWTF(url);
-  } catch (e) {
-    errors.push("douyin.wtf: " + e.message);
-    console.warn(errors[0]);
-  }
-
-  // Fallback TikWM
-  if (!result) {
+  // TikTok: thử TikWM trước
+  // Douyin: thử douyin.wtf → RapidAPI
+  if (!isDouyin) {
     try {
       result = await fetchTikWM(url);
     } catch (e) {
       errors.push("TikWM: " + e.message);
+      console.warn(errors[errors.length - 1]);
+    }
+  }
+
+  // douyin.wtf (TikTok + Douyin)
+  if (!result) {
+    try {
+      result = await fetchDouyinWTF(url);
+    } catch (e) {
+      errors.push("douyin.wtf: " + e.message);
+      console.warn(errors[errors.length - 1]);
+    }
+  }
+
+  // RapidAPI fallback (mạnh cho Douyin short link)
+  if (!result) {
+    try {
+      result = await fetchRapidAPI(url);
+    } catch (e) {
+      errors.push("RapidAPI: " + e.message);
       console.warn(errors[errors.length - 1]);
     }
   }
