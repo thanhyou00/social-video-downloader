@@ -36,19 +36,35 @@
       <div class="search-card" id="searchCard">
         <div class="input-row">
           <div class="input-wrap">
-            <svg class="input-icon" width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true">
-              <path d="M3 9a6 6 0 1 0 12 0A6 6 0 0 0 3 9zM15 15l-2.5-2.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-            </svg>
             <input type="text" id="urlInput" placeholder="Dán link video vào đây..." autocomplete="off" spellcheck="false" />
-            <button class="clear-btn" id="clearBtn" onclick="clearInput()" aria-label="Xóa">✕</button>
+            <div class="input-actions">
+              <button class="icon-btn" id="copyBtn" onclick="copyLink()" aria-label="Sao chép link" title="Sao chép link">
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><rect x="5" y="5" width="8" height="8" rx="1.5" stroke="currentColor" stroke-width="1.4"/><path d="M3 11V3h8" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+              </button>
+              <button class="icon-btn icon-btn-danger" id="clearBtn" onclick="clearInput()" aria-label="Xóa link" title="Xóa link">
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M3 3l10 10M13 3L3 13" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+              </button>
+            </div>
           </div>
-          <button class="btn-primary" id="fetchBtn" onclick="handleFetch()">Phân tích</button>
+          <button class="btn-primary" id="fetchBtn" onclick="handleFetch()">Tải xuống</button>
         </div>
         <div class="input-hint">Hỗ trợ: douyin.com · tiktok.com · youtube.com · instagram.com · facebook.com · twitter.com · pinterest · vimeo · và nhiều hơn</div>
       </div>
 
       <!-- Error -->
       <div class="alert alert-error" id="errorBox" hidden></div>
+
+      <!-- Setup guide -->
+      <div class="setup-guide" id="setupGuide" hidden>
+        <div class="setup-title">⚙️ Cách lấy API key miễn phí (1 lần duy nhất)</div>
+        <ol class="setup-steps">
+          <li>Vào <a href="https://rapidapi.com/ugoBoy/api/social-media-video-downloader" target="_blank" rel="noopener">rapidapi.com → Social Media Video Downloader</a></li>
+          <li>Đăng ký tài khoản RapidAPI miễn phí</li>
+          <li>Nhấn <strong>Subscribe</strong> → chọn gói <strong>Basic (Free)</strong> — 500 req/tháng</li>
+          <li>Copy dòng <code>X-RapidAPI-Key</code> trong phần code mẫu</li>
+          <li>Mở file <code>app.js</code>, thay <code>YOUR_RAPIDAPI_KEY_HERE</code> bằng key vừa copy</li>
+        </ol>
+      </div>
 
       <!-- Loading -->
       <div class="loading-box" id="loadingBox" hidden>
