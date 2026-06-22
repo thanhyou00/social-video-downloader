@@ -1,42 +1,8 @@
 /**
  * VidDown — app.js
- * Dùng RapidAPI: Social Media Video Downloader (ugoBoy)
- * Free tier: 500 req/tháng
- * Đăng ký key tại: https://rapidapi.com/ugoBoy/api/social-media-video-downloader
+ * Tải video TikTok & Douyin không watermark
+ * Dùng TikWM API — miễn phí, không cần key
  */
-
-// ── Cấu hình ─────────────────────────────────────────
-const RAPIDAPI_KEY = "86e2214a67msh7b7095460860fbcp1409e0jsn6b6d478579ba";
-
-// Nền tảng TikWM hỗ trợ tốt (không cần key)
-const TIKWM_PLATFORMS = ["tiktok.com", "vm.tiktok.com", "vt.tiktok.com", "douyin.com", "v.douyin.com"];
-
-const APIS = [
-  {
-    name: "TikWM (TikTok/Douyin - Free)",
-    platforms: TIKWM_PLATFORMS,
-    url: "https://www.tikwm.com/api/",
-    buildRequest: (videoUrl) => ({
-      method: "POST",
-      body: { url: videoUrl, hd: 1 },
-    }),
-    parseResponse: parseTikWM,
-  },
-  {
-    name: "Auto Download All-in-One (RapidAPI)",
-    platforms: null, // hỗ trợ tất cả
-    url: "https://auto-download-all-in-one-big.p.rapidapi.com/v1/social/autolink",
-    host: "auto-download-all-in-one-big.p.rapidapi.com",
-    buildRequest: (videoUrl) => ({
-      method: "POST",
-      body: { url: videoUrl },
-    }),
-    parseResponse: parseAutoDownload,
-  },
-];
-
-// ── State ────────────────────────────────────────────
-let selectedDownload = null;
 
 // ── DOM helpers ──────────────────────────────────────
 const $ = (id) => document.getElementById(id);
@@ -45,9 +11,51 @@ function hide(el) { el.hidden = true; }
 function showError(msg) { const b = $("errorBox"); b.textContent = msg; show(b); }
 function clearError() { hide($("errorBox")); }
 
+// ── Nền tảng hỗ trợ ─────────────────────────────────
+const SUPPORTED = ["tiktok.com", "vm.tiktok.com", "vt.tiktok.com", "douyin.com", "v.douyin.com"];
+
+function isSupportedUrl(url) {
+  try {
+    const host = new URL(url).hostname.replace("www.", "");
+    return SUPPORTED.some(p => host.includes(p));
+  } catch { return false; }
+}
+
+function isValidUrl(url) {
+  try { const u = new URL(url); return u.protocol === "https:" || u.protocol === "http:"; }
+  catch { return false; }
+}
+
+function detectPlatform(url) {
+  try {
+    const host = new URL(url).hostname;
+    if (host.includes("douyin")) return "Douyin";
+    return "TikTok";
+  } catch { return "TikTok"; }
+}
+
+// ── Trích xuất URL từ đoạn text bất kỳ ──────────────
+function extractUrl(text) {
+  if (!text) return null;
+  const urlRegex = /https?:\/\/[^\s\u4e00-\u9fff\u3000-\u303f\uff00-\uffef，。！？、（）【】""'']+/gi;
+  const matches = text.match(urlRegex);
+  if (!matches) return null;
+  const cleaned = matches.map(u => u.replace(/[.,;!?)\]]+$/, "").trim());
+  return cleaned.find(u => { try { return SUPPORTED.some(p => new URL(u).hostname.includes(p)); } catch { return false; } })
+    || cleaned[0];
+}
+
+function showExtractedHint(url) {
+  const hint = document.querySelector(".input-hint");
+  const original = hint.textContent;
+  hint.style.color = "#16a34a";
+  hint.textContent = "✓ Đã tìm thấy link: " + (url.length > 55 ? url.slice(0, 55) + "…" : url);
+  setTimeout(() => { hint.style.color = ""; hint.textContent = original; }, 3000);
+}
+
 // ── Input events ─────────────────────────────────────
 $("urlInput").addEventListener("input", () => {
-  
+  updatePasteBtn($("urlInput").value.trim().length > 0);
   clearError();
 });
 
@@ -57,7 +65,7 @@ $("urlInput").addEventListener("paste", () => {
     const extracted = extractUrl(pasted);
     if (extracted && extracted !== pasted.trim()) {
       $("urlInput").value = extracted;
-      
+      updatePasteBtn(true);
       showExtractedHint(extracted);
     }
   }, 0);
@@ -67,18 +75,16 @@ $("urlInput").addEventListener("keydown", (e) => {
   if (e.key === "Enter") handleFetch();
 });
 
+// ── Nút paste/clear toggle ───────────────────────────
 async function togglePaste() {
   const input = $("urlInput");
-
   if (input.value.trim()) {
-    // Có link → xóa
     input.value = "";
     hide($("resultCard"));
     clearError();
     updatePasteBtn(false);
     input.focus();
   } else {
-    // Chưa có link → paste từ clipboard
     try {
       let text = "";
       if (navigator.clipboard && window.isSecureContext) {
@@ -92,9 +98,7 @@ async function togglePaste() {
       } else {
         input.focus();
       }
-    } catch {
-      input.focus();
-    }
+    } catch { input.focus(); }
   }
 }
 
@@ -115,192 +119,28 @@ function clearInput() {
   $("urlInput").focus();
 }
 
-// ── Trích xuất URL từ đoạn text bất kỳ ──────────────
-function extractUrl(text) {
-  if (!text) return null;
-  const urlRegex = /https?:\/\/[^\s\u4e00-\u9fff\u3000-\u303f\uff00-\uffef，。！？、（）【】""'']+/gi;
-  const matches = text.match(urlRegex);
-  if (!matches) return null;
-
-  const videoPlatforms = [
-    "douyin.com", "v.douyin.com",
-    "tiktok.com", "vm.tiktok.com", "vt.tiktok.com",
-    "youtube.com", "youtu.be",
-    "instagram.com", "facebook.com", "fb.watch",
-    "twitter.com", "x.com", "pinterest.com", "vimeo.com",
-  ];
-
-  const cleaned = matches.map(u => u.replace(/[.,;!?)\]]+$/, "").trim());
-  return cleaned.find(u => {
-    try {
-      const host = new URL(u).hostname.replace("www.", "");
-      return videoPlatforms.some(p => host.includes(p));
-    } catch { return false; }
-  }) || cleaned[0];
-}
-
-function showExtractedHint(url) {
-  const hint = document.querySelector(".input-hint");
-  const original = hint.textContent;
-  hint.style.color = "#16a34a";
-  hint.textContent = "✓ Đã tìm thấy link: " + (url.length > 60 ? url.slice(0, 60) + "…" : url);
-  setTimeout(() => { hint.style.color = ""; hint.textContent = original; }, 3000);
-}
-
-function isValidUrl(url) {
-  try { const u = new URL(url); return u.protocol === "https:" || u.protocol === "http:"; }
-  catch { return false; }
-}
-
-function detectPlatform(url) {
-  const map = {
-    "douyin.com": "Douyin", "v.douyin.com": "Douyin",
-    "tiktok.com": "TikTok", "vm.tiktok.com": "TikTok", "vt.tiktok.com": "TikTok",
-    "youtube.com": "YouTube", "youtu.be": "YouTube",
-    "instagram.com": "Instagram", "facebook.com": "Facebook", "fb.watch": "Facebook",
-    "twitter.com": "Twitter/X", "x.com": "Twitter/X",
-    "pinterest.com": "Pinterest", "vimeo.com": "Vimeo",
-  };
-  try {
-    const host = new URL(url).hostname.replace("www.", "");
-    for (const [k, v] of Object.entries(map)) if (host.includes(k)) return v;
-  } catch {}
-  return "Video";
-}
-
-// ── Parse response TikWM ─────────────────────────────
-// Response: { code, msg, data: { play, hdplay, wmplay, music, title, author, ... } }
-function parseTikWM(data, originalUrl) {
-  if (data.code !== 0) throw new Error(data.msg || "TikWM: Không tải được video.");
-
-  const d = data.data;
-  if (!d) throw new Error("TikWM: Không có dữ liệu.");
-
-  const base = sanitizeFilename(d.title || "video");
-  const formats = [];
-
-  if (d.hdplay) formats.push({
-    label: "HD", desc: "Video HD không watermark",
-    size: d.hd_size ? formatSize(d.hd_size) : "–",
-    type: "video", url: d.hdplay, filename: base + ".mp4",
+// ── Gọi TikWM API ────────────────────────────────────
+async function fetchTikWM(url) {
+  const res = await fetch("https://www.tikwm.com/api/", {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({ url, hd: 1 }).toString(),
+    signal: AbortSignal.timeout(20000),
   });
-
-  if (d.play) formats.push({
-    label: "SD", desc: "Video không watermark",
-    size: d.size ? formatSize(d.size) : "–",
-    type: "video", url: d.play, filename: base + ".mp4",
-  });
-
-  if (d.wmplay) formats.push({
-    label: "WM", desc: "Video có watermark",
-    size: d.wm_size ? formatSize(d.wm_size) : "–",
-    type: "video", url: d.wmplay, filename: base + "_wm.mp4",
-  });
-
-  if (d.music) formats.push({
-    label: "MP3", desc: "Chỉ âm thanh",
-    size: d.music_info?.size ? formatSize(d.music_info.size) : "–",
-    type: "audio", url: d.music, filename: base + ".mp3",
-  });
-
-  if (!formats.length) throw new Error("TikWM: Không tìm thấy link tải.");
-
-  return {
-    title: d.title || "Video",
-    thumbnail: d.origin_cover || d.cover || null,
-    author: d.author?.nickname || "",
-    formats,
-  };
+  if (!res.ok) throw new Error("Lỗi kết nối TikWM: " + res.status);
+  const json = await res.json();
+  if (json.code !== 0) throw new Error(json.msg || "Không tải được video này.");
+  return json.data;
 }
 
 function formatSize(bytes) {
   if (!bytes) return "–";
   const mb = bytes / 1024 / 1024;
-  return mb > 1 ? mb.toFixed(1) + " MB" : (bytes / 1024).toFixed(0) + " KB";
-}
-
-// ── Parse response Auto Download All-in-One ──────────
-// Response: { success, title, thumbnail, medias: [{url, quality, extension, formattedSize}] }
-function parseAutoDownload(data, originalUrl) {
-  if (!data.success) throw new Error(data.message || "Không tải được video này.");
-
-  const base = sanitizeFilename(data.title || detectPlatform(originalUrl));
-  const formats = [];
-
-  for (const item of (data.medias || [])) {
-    if (!item.url) continue;
-    const ext = (item.extension || "mp4").toLowerCase();
-    const isAudio = ext === "mp3" || ext === "m4a" || ext === "ogg" ||
-                    (item.quality || "").toLowerCase().includes("audio");
-    const quality = item.quality || (isAudio ? "Audio" : "Video");
-    formats.push({
-      label: isAudio ? "MP3" : quality,
-      desc: isAudio ? "Chỉ âm thanh (MP3)" : `Video ${quality}`,
-      size: item.formattedSize || "–",
-      type: isAudio ? "audio" : "video",
-      url: item.url,
-      filename: base + "." + ext,
-    });
-  }
-
-  if (!formats.length) throw new Error("Không tìm thấy link tải trong kết quả.");
-
-  return {
-    title: data.title || "Video",
-    thumbnail: data.thumbnail || null,
-    formats,
-  };
+  return mb >= 1 ? mb.toFixed(1) + " MB" : (bytes / 1024).toFixed(0) + " KB";
 }
 
 function sanitizeFilename(name) {
   return (name || "video").replace(/[/\\?%*:|"<>]/g, "-").slice(0, 60);
-}
-
-// ── Kiểm tra API key ─────────────────────────────────
-function checkApiKey() {
-  if (!RAPIDAPI_KEY || RAPIDAPI_KEY === "YOUR_RAPIDAPI_KEY_HERE") {
-    showError("⚠️ Chưa cấu hình API key. Xem hướng dẫn bên dưới để lấy key miễn phí.");
-    show($("setupGuide"));
-    return false;
-  }
-  return true;
-}
-
-// ── Gọi API ──────────────────────────────────────────
-async function callApi(api, videoUrl) {
-  const req = api.buildRequest(videoUrl);
-  const isTikWM = api.name.includes("TikWM");
-
-  const headers = { "Content-Type": "application/json" };
-  if (!isTikWM) {
-    headers["x-rapidapi-key"] = RAPIDAPI_KEY;
-    headers["x-rapidapi-host"] = api.host;
-  }
-
-  // TikWM dùng form-urlencoded
-  let body;
-  if (isTikWM && req.body) {
-    headers["Content-Type"] = "application/x-www-form-urlencoded";
-    body = new URLSearchParams(req.body).toString();
-  } else if (req.body) {
-    body = JSON.stringify(req.body);
-  }
-
-  const res = await fetch(api.url, {
-    method: req.method || "POST",
-    headers,
-    body,
-    signal: AbortSignal.timeout(20000),
-  });
-
-  if (res.status === 403) throw new Error("API key không hợp lệ hoặc chưa subscribe API này trên RapidAPI.");
-  if (res.status === 429) throw new Error("Đã hết quota miễn phí tháng này (500 req/tháng).");
-  if (!res.ok) {
-    const txt = await res.text().catch(() => "");
-    throw new Error(`Lỗi server ${res.status}: ${txt.slice(0, 100)}`);
-  }
-
-  return await res.json();
 }
 
 // ── Main fetch ───────────────────────────────────────
@@ -312,82 +152,76 @@ async function handleFetch() {
   hide($("loadingBox"));
   hide($("setupGuide"));
 
-  if (!url) { showError("Vui lòng dán link video vào ô tìm kiếm."); return; }
-  if (!checkApiKey()) return;
+  if (!url) { showError("Vui lòng dán link TikTok hoặc Douyin vào ô tìm kiếm."); return; }
 
+  // Trích xuất URL nếu paste cả đoạn text
   if (!isValidUrl(url)) {
     const extracted = extractUrl(url);
     if (extracted) { $("urlInput").value = extracted; showExtractedHint(extracted); url = extracted; }
   }
 
-  if (!isValidUrl(url)) {
-    showError("Không tìm thấy link hợp lệ trong đoạn text.");
+  if (!isValidUrl(url)) { showError("Link không hợp lệ."); return; }
+
+  if (!isSupportedUrl(url)) {
+    showError("Chỉ hỗ trợ TikTok và Douyin. Vui lòng dán link từ tiktok.com hoặc douyin.com.");
     return;
   }
 
   $("fetchBtn").disabled = true;
   show($("loadingBox"));
 
-  let lastError = null;
-
-  // Chọn API phù hợp theo platform, thử TikWM trước cho TikTok/Douyin
-  const host = (() => { try { return new URL(url).hostname.replace("www.", ""); } catch { return ""; } })();
-  const orderedApis = [...APIS].sort((a, b) => {
-    const aMatch = a.platforms?.some(p => host.includes(p)) ? -1 : 1;
-    const bMatch = b.platforms?.some(p => host.includes(p)) ? -1 : 1;
-    return aMatch - bMatch;
-  });
-
-  for (const api of orderedApis) {
-    // Bỏ qua RapidAPI nếu chưa có key
-    if (api.host && (!RAPIDAPI_KEY || RAPIDAPI_KEY === "YOUR_RAPIDAPI_KEY_HERE")) {
-      console.log("Bỏ qua " + api.name + " (chưa có API key)");
-      continue;
-    }
-    try {
-      console.log("Thử:", api.name);
-      const raw = await callApi(api, url);
-      const result = api.parseResponse(raw, url);
-      renderResult(result, url);
-      hide($("loadingBox"));
-      $("fetchBtn").disabled = false;
-      return;
-    } catch (err) {
-      lastError = err;
-      console.warn(api.name + " thất bại:", err.message);
-    }
+  try {
+    const data = await fetchTikWM(url);
+    renderResult(data, url);
+  } catch (err) {
+    console.error(err);
+    showError(err.message || "Không tải được. Thử lại sau.");
+  } finally {
+    hide($("loadingBox"));
+    $("fetchBtn").disabled = false;
   }
-
-  hide($("loadingBox"));
-  $("fetchBtn").disabled = false;
-  showError("Không tải được: " + (lastError?.message || "Thử lại sau."));
 }
 
 // ── Render kết quả ───────────────────────────────────
-function renderResult(result, url) {
-  selectedDownload = null;
-  $("resultPlatform").textContent = detectPlatform(url);
-  $("resultTitle").textContent = result.title || "Video";
+let selectedDownload = null;
 
-  if (result.thumbnail) {
+function renderResult(d, url) {
+  selectedDownload = null;
+
+  $("resultPlatform").textContent = detectPlatform(url);
+  $("resultTitle").textContent = d.title || "Video";
+  $("resultAuthor").textContent = d.author?.nickname ? "👤 " + d.author.nickname : "";
+  $("resultDuration").textContent = d.duration ? "⏱ " + formatDuration(d.duration) : "";
+
+  // Thumbnail
+  const thumb = d.origin_cover || d.cover;
+  if (thumb) {
     const img = document.createElement("img");
-    img.src = result.thumbnail;
+    img.src = thumb;
     img.alt = "Thumbnail";
     img.onerror = () => {};
     $("resultThumb").innerHTML = "";
     $("resultThumb").appendChild(img);
   }
 
+  // Build formats
+  const base = sanitizeFilename(d.title || "video");
+  const formats = [];
+
+  if (d.hdplay) formats.push({ label: "HD", desc: "Video HD không watermark", size: formatSize(d.hd_size), type: "video", url: d.hdplay, filename: base + "_hd.mp4" });
+  if (d.play)   formats.push({ label: "SD", desc: "Video không watermark",    size: formatSize(d.size),    type: "video", url: d.play,   filename: base + ".mp4" });
+  if (d.wmplay) formats.push({ label: "WM", desc: "Video có watermark",       size: formatSize(d.wm_size), type: "video", url: d.wmplay, filename: base + "_wm.mp4" });
+  if (d.music)  formats.push({ label: "MP3", desc: "Chỉ âm thanh",            size: formatSize(d.music_info?.size), type: "audio", url: d.music, filename: base + ".mp3" });
+
   const grid = $("formatGrid");
   grid.innerHTML = "";
-
-  result.formats.forEach((fmt, i) => {
+  formats.forEach((fmt, i) => {
     const item = document.createElement("div");
     item.className = "format-item";
     item.innerHTML =
       '<div class="fmt-radio"></div>' +
-      '<span class="fmt-badge ' + (fmt.type === "audio" ? "badge-audio" : "badge-video") + '">' + fmt.label + "</span>" +
-      '<span class="fmt-desc">' + fmt.desc + "</span>" +
+      '<span class="fmt-badge ' + (fmt.type === "audio" ? "badge-audio" : "badge-video") + '">' + fmt.label + '</span>' +
+      '<span class="fmt-desc">' + fmt.desc + '</span>' +
       '<span class="fmt-size">' + fmt.size + '</span>';
     item.addEventListener("click", () => selectFormat(item, fmt));
     grid.appendChild(item);
@@ -395,6 +229,11 @@ function renderResult(result, url) {
   });
 
   show($("resultCard"));
+}
+
+function formatDuration(secs) {
+  const m = Math.floor(secs / 60), s = secs % 60;
+  return m + ":" + String(s).padStart(2, "0");
 }
 
 function selectFormat(el, fmt) {
@@ -410,7 +249,6 @@ function handleDownload() {
   if (!selectedDownload) return;
   const btn = $("dlBtn");
   btn.disabled = true;
-  btn.textContent = "Đang mở...";
 
   const a = document.createElement("a");
   a.href = selectedDownload.url;
