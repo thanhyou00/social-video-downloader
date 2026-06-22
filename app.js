@@ -55,17 +55,29 @@ $("urlInput").addEventListener("keydown", (e) => {
 
 async function copyLink() {
   const url = $("urlInput").value.trim();
-  if (!url) return;
+  if (!url) { $("urlInput").focus(); return; }
   try {
-    await navigator.clipboard.writeText(url);
+    // Thử clipboard API trước
+    if (navigator.clipboard && window.isSecureContext) {
+      await navigator.clipboard.writeText(url);
+    } else {
+      // Fallback cho HTTP hoặc trình duyệt cũ
+      const ta = document.createElement("textarea");
+      ta.value = url;
+      ta.style.cssText = "position:fixed;left:-9999px;top:-9999px";
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand("copy");
+      document.body.removeChild(ta);
+    }
     const btn = $("copyBtn");
+    const orig = btn.innerHTML;
     btn.innerHTML = '<svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M3 8l4 4 6-6" stroke="#16a34a" stroke-width="1.8" stroke-linecap="round"/></svg>';
     btn.style.color = "#16a34a";
-    setTimeout(() => {
-      btn.innerHTML = '<svg width="16" height="16" viewBox="0 0 16 16" fill="none"><rect x="5" y="5" width="8" height="8" rx="1.5" stroke="currentColor" stroke-width="1.4"/><path d="M3 11V3h8" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>';
-      btn.style.color = "";
-    }, 1500);
-  } catch {}
+    setTimeout(() => { btn.innerHTML = orig; btn.style.color = ""; }, 1500);
+  } catch(e) {
+    console.warn("Copy failed:", e);
+  }
 }
 
 function clearInput() {
@@ -168,7 +180,7 @@ function sanitizeFilename(name) {
 
 // ── Kiểm tra API key ─────────────────────────────────
 function checkApiKey() {
-  if (!RAPIDAPI_KEY || RAPIDAPI_KEY === "86e2214a67msh7b7095460860fbcp1409e0jsn6b6d478579ba") {
+  if (!RAPIDAPI_KEY || RAPIDAPI_KEY === "YOUR_RAPIDAPI_KEY_HERE") {
     showError("⚠️ Chưa cấu hình API key. Xem hướng dẫn bên dưới để lấy key miễn phí.");
     show($("setupGuide"));
     return false;
