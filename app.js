@@ -8,9 +8,23 @@
 // ── Cấu hình ─────────────────────────────────────────
 const RAPIDAPI_KEY = "86e2214a67msh7b7095460860fbcp1409e0jsn6b6d478579ba";
 
+// Nền tảng TikWM hỗ trợ tốt (không cần key)
+const TIKWM_PLATFORMS = ["tiktok.com", "vm.tiktok.com", "vt.tiktok.com", "douyin.com", "v.douyin.com"];
+
 const APIS = [
   {
-    name: "Auto Download All-in-One",
+    name: "TikWM (TikTok/Douyin - Free)",
+    platforms: TIKWM_PLATFORMS,
+    url: "https://www.tikwm.com/api/",
+    buildRequest: (videoUrl) => ({
+      method: "POST",
+      body: { url: videoUrl, hd: 1 },
+    }),
+    parseResponse: parseTikWM,
+  },
+  {
+    name: "Auto Download All-in-One (RapidAPI)",
+    platforms: null, // hỗ trợ tất cả
     url: "https://auto-download-all-in-one-big.p.rapidapi.com/v1/social/autolink",
     host: "auto-download-all-in-one-big.p.rapidapi.com",
     buildRequest: (videoUrl) => ({
@@ -154,6 +168,57 @@ function detectPlatform(url) {
   return "Video";
 }
 
+// ── Parse response TikWM ─────────────────────────────
+// Response: { code, msg, data: { play, hdplay, wmplay, music, title, author, ... } }
+function parseTikWM(data, originalUrl) {
+  if (data.code !== 0) throw new Error(data.msg || "TikWM: Không tải được video.");
+
+  const d = data.data;
+  if (!d) throw new Error("TikWM: Không có dữ liệu.");
+
+  const base = sanitizeFilename(d.title || "video");
+  const formats = [];
+
+  if (d.hdplay) formats.push({
+    label: "HD", desc: "Video HD không watermark",
+    size: d.hd_size ? formatSize(d.hd_size) : "–",
+    type: "video", url: d.hdplay, filename: base + ".mp4",
+  });
+
+  if (d.play) formats.push({
+    label: "SD", desc: "Video không watermark",
+    size: d.size ? formatSize(d.size) : "–",
+    type: "video", url: d.play, filename: base + ".mp4",
+  });
+
+  if (d.wmplay) formats.push({
+    label: "WM", desc: "Video có watermark",
+    size: d.wm_size ? formatSize(d.wm_size) : "–",
+    type: "video", url: d.wmplay, filename: base + "_wm.mp4",
+  });
+
+  if (d.music) formats.push({
+    label: "MP3", desc: "Chỉ âm thanh",
+    size: d.music_info?.size ? formatSize(d.music_info.size) : "–",
+    type: "audio", url: d.music, filename: base + ".mp3",
+  });
+
+  if (!formats.length) throw new Error("TikWM: Không tìm thấy link tải.");
+
+  return {
+    title: d.title || "Video",
+    thumbnail: d.origin_cover || d.cover || null,
+    author: d.author?.nickname || "",
+    formats,
+  };
+}
+
+function formatSize(bytes) {
+  if (!bytes) return "–";
+  const mb = bytes / 1024 / 1024;
+  return mb > 1 ? mb.toFixed(1) + " MB" : (bytes / 1024).toFixed(0) + " KB";
+}
+
 // ── Parse response Auto Download All-in-One ──────────
 // Response: { success, title, thumbnail, medias: [{url, quality, extension, formattedSize}] }
 function parseAutoDownload(data, originalUrl) {
@@ -204,16 +269,27 @@ function checkApiKey() {
 // ── Gọi API ──────────────────────────────────────────
 async function callApi(api, videoUrl) {
   const req = api.buildRequest(videoUrl);
-  const fetchUrl = req.params ? api.url + "?" + req.params.toString() : api.url;
+  const isTikWM = api.name.includes("TikWM");
 
-  const res = await fetch(fetchUrl, {
-    method: req.method || "GET",
-    headers: {
-      "x-rapidapi-key": RAPIDAPI_KEY,
-      "x-rapidapi-host": api.host,
-      "Content-Type": "application/json",
-    },
-    body: req.body ? JSON.stringify(req.body) : undefined,
+  const headers = { "Content-Type": "application/json" };
+  if (!isTikWM) {
+    headers["x-rapidapi-key"] = RAPIDAPI_KEY;
+    headers["x-rapidapi-host"] = api.host;
+  }
+
+  // TikWM dùng form-urlencoded
+  let body;
+  if (isTikWM && req.body) {
+    headers["Content-Type"] = "application/x-www-form-urlencoded";
+    body = new URLSearchParams(req.body).toString();
+  } else if (req.body) {
+    body = JSON.stringify(req.body);
+  }
+
+  const res = await fetch(api.url, {
+    method: req.method || "POST",
+    headers,
+    body,
     signal: AbortSignal.timeout(20000),
   });
 
@@ -253,8 +329,23 @@ async function handleFetch() {
   show($("loadingBox"));
 
   let lastError = null;
-  for (const api of APIS) {
+
+  // Chọn API phù hợp theo platform, thử TikWM trước cho TikTok/Douyin
+  const host = (() => { try { return new URL(url).hostname.replace("www.", ""); } catch { return ""; } })();
+  const orderedApis = [...APIS].sort((a, b) => {
+    const aMatch = a.platforms?.some(p => host.includes(p)) ? -1 : 1;
+    const bMatch = b.platforms?.some(p => host.includes(p)) ? -1 : 1;
+    return aMatch - bMatch;
+  });
+
+  for (const api of orderedApis) {
+    // Bỏ qua RapidAPI nếu chưa có key
+    if (api.host && (!RAPIDAPI_KEY || RAPIDAPI_KEY === "YOUR_RAPIDAPI_KEY_HERE")) {
+      console.log("Bỏ qua " + api.name + " (chưa có API key)");
+      continue;
+    }
     try {
+      console.log("Thử:", api.name);
       const raw = await callApi(api, url);
       const result = api.parseResponse(raw, url);
       renderResult(result, url);
@@ -263,7 +354,7 @@ async function handleFetch() {
       return;
     } catch (err) {
       lastError = err;
-      console.warn(api.name + " failed:", err.message);
+      console.warn(api.name + " thất bại:", err.message);
     }
   }
 
