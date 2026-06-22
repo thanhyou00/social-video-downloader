@@ -7,6 +7,8 @@
 // ── Cấu hình RapidAPI (fallback cho Douyin) ─────────
 const RAPIDAPI_KEY = "86e2214a67msh7b7095460860fbcp1409e0jsn6b6d478579ba";
 const RAPIDAPI_HOST = "auto-download-all-in-one-big.p.rapidapi.com";
+const XHS_API_HOST = "xiaohongshu-all-api.p.rapidapi.com";
+const XHS_API_URL  = "https://xiaohongshu-all-api.p.rapidapi.com/api/xiaohongshu/get-note-detail/v5";
 const RAPIDAPI_URL  = "https://auto-download-all-in-one-big.p.rapidapi.com/v1/social/autolink";
 
 // ── DOM helpers ──────────────────────────────────────
@@ -20,6 +22,7 @@ function clearError() { hide($("errorBox")); }
 const SUPPORTED_HOSTS = [
   "tiktok.com", "vm.tiktok.com", "vt.tiktok.com",
   "douyin.com", "v.douyin.com",
+  "xiaohongshu.com", "xhslink.com",
 ];
 
 function isSupportedUrl(url) {
@@ -37,7 +40,9 @@ function isValidUrl(url) {
 function detectPlatform(url) {
   try {
     const host = new URL(url).hostname;
-    return host.includes("douyin") ? "Douyin" : "TikTok";
+    if (host.includes("douyin")) return "Douyin";
+    if (host.includes("xiaohongshu") || host.includes("xhslink")) return "Xiaohongshu";
+    return "TikTok";
   } catch { return "TikTok"; }
 }
 
@@ -278,6 +283,92 @@ async function fetchRapidAPI(url) {
   };
 }
 
+// ── API 4: Xiaohongshu (小红书) ──────────────────────
+function extractXhsNoteId(url) {
+  // Dạng: xiaohongshu.com/explore/686f89fa... hoặc xhslink.com/xxx (redirect)
+  const m = url.match(/explore\/([a-f0-9]{24})/i)
+    || url.match(/discovery\/item\/([a-f0-9]{24})/i)
+    || url.match(/\/([a-f0-9]{24})/i);
+  return m ? m[1] : null;
+}
+
+async function resolveXhsShortLink(url) {
+  // xhslink.com là short link, resolve qua allorigins
+  if (!url.includes("xhslink.com")) return url;
+  try {
+    const res = await fetch(
+      "https://api.allorigins.win/get?url=" + encodeURIComponent(url),
+      { signal: AbortSignal.timeout(8000) }
+    );
+    const json = await res.json();
+    const finalUrl = json?.status?.url || "";
+    if (finalUrl.includes("xiaohongshu.com")) return finalUrl;
+  } catch {}
+  return url;
+}
+
+async function fetchXHS(url) {
+  // Resolve short link nếu cần
+  const resolvedUrl = await resolveXhsShortLink(url);
+  const noteId = extractXhsNoteId(resolvedUrl);
+  if (!noteId) throw new Error("Không lấy được noteId từ link Xiaohongshu.");
+
+  const apiUrl = XHS_API_URL + "?noteId=" + noteId;
+  const res = await fetch(apiUrl, {
+    method: "GET",
+    headers: {
+      "Content-Type": "application/json",
+      "x-rapidapi-key": RAPIDAPI_KEY,
+      "x-rapidapi-host": XHS_API_HOST,
+    },
+    signal: AbortSignal.timeout(20000),
+  });
+
+  if (res.status === 403) throw new Error("XHS API: key không hợp lệ.");
+  if (res.status === 429) throw new Error("XHS API: hết quota.");
+  if (!res.ok) throw new Error("XHS API lỗi: " + res.status);
+
+  const json = await res.json();
+  const note = json?.data?.note || json?.data || json;
+  if (!note) throw new Error("XHS: Không parse được dữ liệu.");
+
+  const base = sanitizeFilename(note.title || note.desc || "xiaohongshu");
+  const formats = [];
+
+  // Video
+  const videoUrl = note.video?.media?.stream?.h264?.[0]?.master_url
+    || note.video?.media?.stream?.h265?.[0]?.master_url
+    || note.video?.media?.stream?.av1?.[0]?.master_url;
+  if (videoUrl) {
+    formats.push({
+      label: "MP4", desc: "Video không watermark",
+      size: "–", type: "video",
+      url: videoUrl, filename: base + ".mp4",
+    });
+  }
+
+  // Ảnh (nếu là post ảnh)
+  const images = note.image_list || [];
+  images.forEach((img, i) => {
+    const imgUrl = img.url_default || img.url;
+    if (imgUrl) formats.push({
+      label: "Ảnh " + (i + 1), desc: "Hình ảnh gốc",
+      size: "–", type: "image",
+      url: imgUrl, filename: base + "_" + (i + 1) + ".jpg",
+    });
+  });
+
+  if (!formats.length) throw new Error("XHS: Không tìm thấy media.");
+
+  return {
+    title: note.title || note.desc || "Xiaohongshu",
+    thumbnail: note.image_list?.[0]?.url || null,
+    author: note.user?.nickname || "",
+    duration: 0,
+    formats,
+  };
+}
+
 // ── Main fetch ───────────────────────────────────────
 async function handleFetch() {
   let url = $("urlInput").value.trim();
@@ -299,13 +390,23 @@ async function handleFetch() {
   $("fetchBtn").disabled = true;
   show($("loadingBox"));
 
-  const isDouyin = url.includes("douyin.com");
+  const isDouyin = url.includes("douyin.com") || url.includes("v.douyin.com");
+  const isXHS    = url.includes("xiaohongshu.com") || url.includes("xhslink.com");
   let result = null;
   const errors = [];
 
-  // TikTok: thử TikWM trước
-  // Douyin: thử douyin.wtf → RapidAPI
-  if (!isDouyin) {
+  // Xiaohongshu
+  if (isXHS) {
+    try {
+      result = await fetchXHS(url);
+    } catch (e) {
+      errors.push("XHS: " + e.message);
+      console.warn(errors[errors.length - 1]);
+    }
+  }
+
+  // TikTok: TikWM trước
+  if (!result && !isDouyin && !isXHS) {
     try {
       result = await fetchTikWM(url);
     } catch (e) {
@@ -315,7 +416,7 @@ async function handleFetch() {
   }
 
   // douyin.wtf (TikTok + Douyin)
-  if (!result) {
+  if (!result && !isXHS) {
     try {
       result = await fetchDouyinWTF(url);
     } catch (e) {
@@ -324,7 +425,7 @@ async function handleFetch() {
     }
   }
 
-  // RapidAPI fallback (mạnh cho Douyin short link)
+  // RapidAPI fallback (Douyin + tất cả)
   if (!result) {
     try {
       result = await fetchRapidAPI(url);
