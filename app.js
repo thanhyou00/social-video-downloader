@@ -119,17 +119,45 @@ function clearInput() {
   $("urlInput").focus();
 }
 
+// ── Resolve Douyin short link ─────────────────────────
+// v.douyin.com là link rút gọn, cần lấy URL thật trước khi gọi TikWM
+async function resolveDouyinShortUrl(url) {
+  const isShort = /v\.douyin\.com|vm\.tiktok\.com|vt\.tiktok\.com/.test(url);
+  if (!isShort) return url;
+
+  // Dùng allorigins.win để bypass CORS và follow redirect
+  const proxyUrl = "https://api.allorigins.win/get?url=" + encodeURIComponent(url);
+  try {
+    const res = await fetch(proxyUrl, { signal: AbortSignal.timeout(10000) });
+    const json = await res.json();
+    // allorigins trả về URL cuối cùng sau redirect trong contents hoặc status.url
+    const finalUrl = json?.status?.url || "";
+    // Tìm URL douyin.com hoặc tiktok.com dài trong response
+    const match = (finalUrl + (json?.contents || "")).match(
+      /https?:\/\/(?:www\.)?(?:douyin\.com\/video\/\d+|tiktok\.com\/@[^/]+\/video\/\d+)/
+    );
+    if (match) return match[0];
+  } catch (e) {
+    console.warn("Không resolve được short URL, thử gửi thẳng:", e.message);
+  }
+  return url; // fallback: gửi nguyên link gốc
+}
+
 // ── Gọi TikWM API ────────────────────────────────────
 async function fetchTikWM(url) {
+  // Resolve short link trước
+  const resolvedUrl = await resolveDouyinShortUrl(url);
+  console.log("URL gửi TikWM:", resolvedUrl);
+
   const res = await fetch("https://www.tikwm.com/api/", {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({ url, hd: 1 }).toString(),
+    body: new URLSearchParams({ url: resolvedUrl, hd: 1 }).toString(),
     signal: AbortSignal.timeout(20000),
   });
   if (!res.ok) throw new Error("Lỗi kết nối TikWM: " + res.status);
   const json = await res.json();
-  if (json.code !== 0) throw new Error(json.msg || "Không tải được video này.");
+  if (json.code !== 0) throw new Error(json.msg || "Không tải được. Thử copy link đầy đủ từ trình duyệt.");
   return json.data;
 }
 
