@@ -37,14 +37,12 @@
         <div class="input-row">
           <div class="input-wrap">
             <input type="text" id="urlInput" placeholder="Dán link video vào đây..." autocomplete="off" spellcheck="false" />
-            <div class="input-actions">
-              <button class="icon-btn" id="copyBtn" onclick="copyLink()" aria-label="Sao chép link" title="Sao chép link">
-                <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><rect x="5" y="5" width="8" height="8" rx="1.5" stroke="currentColor" stroke-width="1.4"/><path d="M3 11V3h8" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
-              </button>
-              <button class="icon-btn icon-btn-danger" id="clearBtn" onclick="clearInput()" aria-label="Xóa link" title="Xóa link">
-                <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M3 3l10 10M13 3L3 13" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
-              </button>
-            </div>
+            <button class="icon-btn-toggle" id="pasteBtn" onclick="togglePaste()" aria-label="Dán / Xóa link" title="Dán link">
+              <!-- icon paste -->
+              <svg id="iconPaste" width="17" height="17" viewBox="0 0 17 17" fill="none"><rect x="5.5" y="5.5" width="8" height="8" rx="1.5" stroke="currentColor" stroke-width="1.5"/><path d="M3 11.5V3h8.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+              <!-- icon clear -->
+              <svg id="iconClear" width="15" height="15" viewBox="0 0 15 15" fill="none" style="display:none"><path d="M2 2l11 11M13 2L2 13" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+            </button>
           </div>
           <button class="btn-primary" id="fetchBtn" onclick="handleFetch()">Tải xuống</button>
         </div>
