@@ -118,7 +118,7 @@ h1 {
 
 #urlInput {
   width: 100%;
-  padding: 14px 76px 14px 16px;
+  padding: 14px 48px 14px 16px;
   border: 1.5px solid var(--border);
   border-radius: var(--radius-sm);
   font-size: 15px; color: var(--text);
@@ -133,23 +133,19 @@ h1 {
 }
 #urlInput::placeholder { color: var(--text-hint); }
 
-.input-actions {
-  position: absolute; right: 6px;
-  display: flex; flex-direction: row; align-items: center; gap: 2px;
-}
-
-.icon-btn {
-  width: 30px; height: 30px;
+.icon-btn-toggle {
+  position: absolute; right: 8px;
+  width: 32px; height: 32px;
   border: none; background: none;
-  border-radius: 7px; cursor: pointer;
+  border-radius: 8px; cursor: pointer;
   display: flex; align-items: center; justify-content: center;
   color: var(--text-hint);
-  transition: background 0.12s, color 0.12s, transform 0.1s;
+  transition: background 0.15s, color 0.15s, transform 0.1s;
   flex-shrink: 0;
 }
-.icon-btn:hover { background: var(--purple-light); color: var(--purple); transform: scale(1.08); }
-.icon-btn-danger:hover { background: #fee2e2; color: #dc2626; transform: scale(1.08); }
-.icon-btn:active { transform: scale(0.94); }
+.icon-btn-toggle:hover { background: var(--purple-light); color: var(--purple); transform: scale(1.08); }
+.icon-btn-toggle.is-clear:hover { background: #fee2e2; color: #dc2626; }
+.icon-btn-toggle:active { transform: scale(0.93); }
 
 .btn-primary {
   padding: 14px 26px;
